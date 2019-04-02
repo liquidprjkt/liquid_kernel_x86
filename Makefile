@@ -650,6 +650,11 @@ outputmakefile:
 	{ echo "# this is build directory, ignore it"; echo "*"; } > .gitignore
 endif
 
+ifneq ($(shell $(LD) --version 2>&1 | head -n 1 | grep LLD),)
+KBUILD_CFLAGS	+= -fuse-ld=$(shell which $(LD))
+endif
+KBUILD_CPPFLAGS	+= -Qunused-arguments
+
 # The expansion should be delayed until arch/$(SRCARCH)/Makefile is included.
 # Some architectures define CROSS_COMPILE in arch/$(SRCARCH)/Makefile.
 # CC_VERSION_TEXT and RUSTC_VERSION_TEXT are referenced from Kconfig (so they
