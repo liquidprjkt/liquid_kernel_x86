@@ -210,8 +210,10 @@ int idle_cpu(int cpu)
 		return 0;
 
 #ifdef CONFIG_SMP
+#if SCHED_FEAT_TTWU_QUEUE
 	if (rq->ttwu_pending)
 		return 0;
+#endif
 #endif
 
 	return 1;
