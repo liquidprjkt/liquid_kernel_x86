@@ -8901,9 +8901,6 @@ static void check_preempt_wakeup_fair(struct rq *rq, struct task_struct *p, int 
 	if (test_tsk_need_resched(curr))
 		return;
 
-	if (!sched_feat(WAKEUP_PREEMPTION))
-		return;
-
 	find_matching_se(&se, &pse);
 	WARN_ON_ONCE(!pse);
 
@@ -8921,6 +8918,9 @@ static void check_preempt_wakeup_fair(struct rq *rq, struct task_struct *p, int 
 		cancel_protect_slice(se);
 		goto preempt;
 	}
+
+	if (!sched_feat(WAKEUP_PREEMPTION))
+		return;
 
 	/*
 	 * IDLE entities do not preempt others.
