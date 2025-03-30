@@ -585,6 +585,9 @@ KBUILD_CFLAGS += -fno-common
 KBUILD_CFLAGS += -fno-PIE
 KBUILD_CFLAGS += -fno-strict-aliasing
 
+# Tell compiler to use pipes instead of temporary files during compilation
+KBUILD_CFLAGS += $(call cc-option, -pipe)
+
 KBUILD_CPPFLAGS := -D__KERNEL__
 KBUILD_RUSTFLAGS := $(rust_common_flags) \
 		    -Cpanic=abort -Cembed-bitcode=n -Clto=n \
