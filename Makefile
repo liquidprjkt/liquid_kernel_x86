@@ -660,7 +660,7 @@ KBUILD_CPPFLAGS	+= -Qunused-arguments
 # CC_VERSION_TEXT and RUSTC_VERSION_TEXT are referenced from Kconfig (so they
 # need export), and from include/config/auto.conf.cmd to detect the compiler
 # upgrade.
-CC_VERSION_TEXT = $(subst $(pound),,$(shell LC_ALL=C $(CC) --version 2>/dev/null | head -n 1))
+CC_VERSION_TEXT = $(subst $(pound),,$(shell LC_ALL=C $(CC) --version 2>/dev/null | grep ' version ' | sed 's/[[:space:]]*$$//;s/ ([^()]*)//g'))
 RUSTC_VERSION_TEXT = $(subst $(pound),,$(shell $(RUSTC) --version 2>/dev/null))
 
 ifneq ($(findstring clang,$(CC_VERSION_TEXT)),)
