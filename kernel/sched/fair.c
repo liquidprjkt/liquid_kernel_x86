@@ -953,7 +953,7 @@ static struct sched_entity *pick_eevdf(struct cfs_rq *cfs_rq)
 	if (sched_feat(RUN_TO_PARITY) && curr && curr->vlag == curr->deadline)
 #ifdef CONFIG_SCHED_BORE
 		if (!(likely(sched_bore) && likely(sched_burst_parity_threshold) &&
-			sched_burst_parity_threshold < cfs_rq->nr_running))
+			sched_burst_parity_threshold < cfs_rq->nr_queued))
 #endif // CONFIG_SCHED_BORE
 		return curr;
 
