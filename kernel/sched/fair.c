@@ -82,7 +82,7 @@ static unsigned int normalized_sysctl_sched_base_slice	= 750000ULL;
 #endif
 
 #ifdef CONFIG_ZEN_INTERACTIVE
-const_debug unsigned int sysctl_sched_migration_cost	= 250000UL;
+const_debug unsigned int sysctl_sched_migration_cost	= 0UL;
 #else
 const_debug unsigned int sysctl_sched_migration_cost	= 500000UL;
 #endif
