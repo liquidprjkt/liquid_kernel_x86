@@ -1084,7 +1084,6 @@ config CSRC_IOASIC
 
 config CSRC_R4K
 	select CLOCKSOURCE_WATCHDOG if CPU_FREQ
-	select HAVE_UNSTABLE_SCHED_CLOCK if SMP && 64BIT
 	bool
 
 config CSRC_SB1250
@@ -2874,6 +2873,9 @@ config ARCH_SUPPORTS_KEXEC
 	def_bool y
 
 config ARCH_SUPPORTS_CRASH_DUMP
+	def_bool y
+
+config ARCH_DEFAULT_CRASH_DUMP
 	def_bool y
 
 config PHYSICAL_START

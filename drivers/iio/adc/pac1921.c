@@ -5,7 +5,7 @@
  * Copyright (C) 2024 Matteo Martelli <matteomartelli3@gmail.com>
  */
 
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <linux/bitfield.h>
 #include <linux/i2c.h>
 #include <linux/iio/events.h>
@@ -1171,7 +1171,9 @@ static int pac1921_probe(struct i2c_client *client)
 		return dev_err_probe(dev, (int)PTR_ERR(priv->regmap),
 				     "Cannot initialize register map\n");
 
-	devm_mutex_init(dev, &priv->lock);
+	ret = devm_mutex_init(dev, &priv->lock);
+	if (ret)
+		return ret;
 
 	priv->dv_gain = PAC1921_DEFAULT_DV_GAIN;
 	priv->di_gain = PAC1921_DEFAULT_DI_GAIN;

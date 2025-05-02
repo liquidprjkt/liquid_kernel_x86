@@ -18,7 +18,6 @@
 #include <net/addrconf.h>
 #include <linux/nfs_common.h>
 #include <linux/nfslocalio.h>
-#include <linux/module.h>
 #include <linux/bvec.h>
 
 #include <linux/nfs.h>
@@ -206,7 +205,8 @@ void nfs_local_probe(struct nfs_client *clp)
 		nfs_local_disable(clp);
 	}
 
-	nfs_uuid_begin(&clp->cl_uuid);
+	if (!nfs_uuid_begin(&clp->cl_uuid))
+		return;
 	if (nfs_server_uuid_is_local(clp))
 		nfs_local_enable(clp);
 	nfs_uuid_end(&clp->cl_uuid);
@@ -331,7 +331,7 @@ nfs_local_pgio_done(struct nfs_pgio_header *hdr, long status)
 		hdr->res.op_status = NFS4_OK;
 		hdr->task.tk_status = 0;
 	} else {
-		hdr->res.op_status = nfs4_stat_to_errno(status);
+		hdr->res.op_status = nfs_localio_errno_to_nfs4_stat(status);
 		hdr->task.tk_status = status;
 	}
 }
@@ -341,7 +341,7 @@ nfs_local_pgio_release(struct nfs_local_kiocb *iocb)
 {
 	struct nfs_pgio_header *hdr = iocb->hdr;
 
-	nfs_to->nfsd_file_put_local(iocb->localio);
+	nfs_to_nfsd_file_put_local(iocb->localio);
 	nfs_local_iocb_free(iocb);
 	nfs_local_hdr_release(hdr, hdr->task.tk_ops);
 }
@@ -353,6 +353,12 @@ nfs_local_read_done(struct nfs_local_kiocb *iocb, long status)
 	struct file *filp = iocb->kiocb.ki_filp;
 
 	nfs_local_pgio_done(hdr, status);
+
+	/*
+	 * Must clear replen otherwise NFSv3 data corruption will occur
+	 * if/when switching from LOCALIO back to using normal RPC.
+	 */
+	hdr->res.replen = 0;
 
 	if (hdr->res.count != hdr->args.count ||
 	    hdr->args.offset + hdr->res.count >= i_size_read(file_inode(filp)))
@@ -622,7 +628,7 @@ int nfs_local_doio(struct nfs_client *clp, struct nfsd_file *localio,
 	}
 out:
 	if (status != 0) {
-		nfs_to->nfsd_file_put_local(localio);
+		nfs_to_nfsd_file_put_local(localio);
 		hdr->task.tk_status = status;
 		nfs_local_hdr_release(hdr, call_ops);
 	}
@@ -663,7 +669,7 @@ nfs_local_commit_done(struct nfs_commit_data *data, int status)
 		data->task.tk_status = 0;
 	} else {
 		nfs_reset_boot_verifier(data->inode);
-		data->res.op_status = nfs4_stat_to_errno(status);
+		data->res.op_status = nfs_localio_errno_to_nfs4_stat(status);
 		data->task.tk_status = status;
 	}
 }
@@ -673,7 +679,7 @@ nfs_local_release_commit_data(struct nfsd_file *localio,
 		struct nfs_commit_data *data,
 		const struct rpc_call_ops *call_ops)
 {
-	nfs_to->nfsd_file_put_local(localio);
+	nfs_to_nfsd_file_put_local(localio);
 	call_ops->rpc_call_done(&data->task, data);
 	call_ops->rpc_release(data);
 }

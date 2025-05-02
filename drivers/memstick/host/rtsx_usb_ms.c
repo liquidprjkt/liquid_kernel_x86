@@ -19,7 +19,7 @@
 #include <linux/mutex.h>
 #include <linux/sched.h>
 #include <linux/completion.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 struct rtsx_usb_ms {
 	struct platform_device	*pdev;
@@ -813,6 +813,7 @@ static void rtsx_usb_ms_drv_remove(struct platform_device *pdev)
 
 	host->eject = true;
 	cancel_work_sync(&host->handle_req);
+	cancel_delayed_work_sync(&host->poll_card);
 
 	mutex_lock(&host->host_mutex);
 	if (host->req) {

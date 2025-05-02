@@ -13,7 +13,7 @@
 #include <linux/regmap.h>
 #include <linux/units.h>
 
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 #include <linux/iio/buffer.h>
 #include <linux/iio/events.h>
@@ -1181,7 +1181,7 @@ static int adxl380_read_raw(struct iio_dev *indio_dev,
 
 		ret = adxl380_read_chn(st, chan->address);
 		iio_device_release_direct_mode(indio_dev);
-		if (ret)
+		if (ret < 0)
 			return ret;
 
 		*val = sign_extend32(ret >> chan->scan_type.shift,

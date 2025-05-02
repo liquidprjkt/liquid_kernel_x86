@@ -6,7 +6,7 @@
  * Copyright (c) 2023 BeagleBoard.org Foundation
  */
 
-#include <asm-generic/unaligned.h>
+#include <linux/unaligned.h>
 #include <linux/crc32.h>
 #include <linux/gpio/consumer.h>
 #include <linux/firmware.h>
@@ -912,7 +912,9 @@ static enum fw_upload_err cc1352_prepare(struct fw_upload *fw_upload,
 		cc1352_bootloader_reset(bg);
 		WRITE_ONCE(bg->flashing_mode, false);
 		msleep(200);
-		gb_greybus_init(bg);
+		if (gb_greybus_init(bg) < 0)
+			return dev_err_probe(&bg->sd->dev, FW_UPLOAD_ERR_RW_ERROR,
+					     "Failed to initialize greybus");
 		gb_beagleplay_start_svc(bg);
 		return FW_UPLOAD_ERR_FW_INVALID;
 	}

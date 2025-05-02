@@ -2032,7 +2032,7 @@ static enum dc_status dc_commit_state_no_check(struct dc *dc, struct dc_state *c
 
 	dc_enable_stereo(dc, context, dc_streams, context->stream_count);
 
-	if (context->stream_count > get_seamless_boot_stream_count(context) ||
+	if (get_seamless_boot_stream_count(context) == 0 ||
 		context->stream_count == 0) {
 		/* Must wait for no flips to be pending before doing optimize bw */
 		hwss_wait_for_no_pipes_pending(dc, context);
@@ -3066,7 +3066,10 @@ static void restore_planes_and_stream_state(
 		return;
 
 	for (i = 0; i < status->plane_count; i++) {
+		/* refcount will always be valid, restore everything else */
+		struct kref refcount = status->plane_states[i]->refcount;
 		*status->plane_states[i] = scratch->plane_states[i];
+		status->plane_states[i]->refcount = refcount;
 	}
 	*stream = scratch->stream_state;
 }
@@ -4418,7 +4421,7 @@ static bool commit_minimal_transition_based_on_current_context(struct dc *dc,
 	struct pipe_split_policy_backup policy;
 	struct dc_state *intermediate_context;
 	struct dc_state *old_current_state = dc->current_state;
-	struct dc_surface_update srf_updates[MAX_SURFACE_NUM] = {0};
+	struct dc_surface_update srf_updates[MAX_SURFACES] = {0};
 	int surface_count;
 
 	/*
@@ -5065,11 +5068,26 @@ static bool update_planes_and_stream_v3(struct dc *dc,
 	return true;
 }
 
+static void clear_update_flags(struct dc_surface_update *srf_updates,
+	int surface_count, struct dc_stream_state *stream)
+{
+	int i;
+
+	if (stream)
+		stream->update_flags.raw = 0;
+
+	for (i = 0; i < surface_count; i++)
+		if (srf_updates[i].surface)
+			srf_updates[i].surface->update_flags.raw = 0;
+}
+
 bool dc_update_planes_and_stream(struct dc *dc,
 		struct dc_surface_update *srf_updates, int surface_count,
 		struct dc_stream_state *stream,
 		struct dc_stream_update *stream_update)
 {
+	bool ret = false;
+
 	dc_exit_ips_for_hw_access(dc);
 	/*
 	 * update planes and stream version 3 separates FULL and FAST updates
@@ -5086,10 +5104,16 @@ bool dc_update_planes_and_stream(struct dc *dc,
 	 * features as they are now transparent to the new sequence.
 	 */
 	if (dc->ctx->dce_version >= DCN_VERSION_4_01)
-		return update_planes_and_stream_v3(dc, srf_updates,
+		ret = update_planes_and_stream_v3(dc, srf_updates,
 				surface_count, stream, stream_update);
-	return update_planes_and_stream_v2(dc, srf_updates,
+	else
+		ret = update_planes_and_stream_v2(dc, srf_updates,
 			surface_count, stream, stream_update);
+
+	if (ret)
+		clear_update_flags(srf_updates, surface_count, stream);
+
+	return ret;
 }
 
 void dc_commit_updates_for_stream(struct dc *dc,
@@ -5099,6 +5123,8 @@ void dc_commit_updates_for_stream(struct dc *dc,
 		struct dc_stream_update *stream_update,
 		struct dc_state *state)
 {
+	bool ret = false;
+
 	dc_exit_ips_for_hw_access(dc);
 	/* TODO: Since change commit sequence can have a huge impact,
 	 * we decided to only enable it for DCN3x. However, as soon as
@@ -5106,17 +5132,17 @@ void dc_commit_updates_for_stream(struct dc *dc,
 	 * the new sequence for all ASICs.
 	 */
 	if (dc->ctx->dce_version >= DCN_VERSION_4_01) {
-		update_planes_and_stream_v3(dc, srf_updates, surface_count,
+		ret = update_planes_and_stream_v3(dc, srf_updates, surface_count,
 				stream, stream_update);
-		return;
-	}
-	if (dc->ctx->dce_version >= DCN_VERSION_3_2) {
-		update_planes_and_stream_v2(dc, srf_updates, surface_count,
+	} else if (dc->ctx->dce_version >= DCN_VERSION_3_2) {
+		ret = update_planes_and_stream_v2(dc, srf_updates, surface_count,
 				stream, stream_update);
-		return;
-	}
-	update_planes_and_stream_v1(dc, srf_updates, surface_count, stream,
-			stream_update, state);
+	} else
+		ret = update_planes_and_stream_v1(dc, srf_updates, surface_count, stream,
+				stream_update, state);
+
+	if (ret)
+		clear_update_flags(srf_updates, surface_count, stream);
 }
 
 uint8_t dc_get_current_stream_count(struct dc *dc)
@@ -5979,4 +6005,22 @@ struct dc_power_profile dc_get_power_profile_for_dc_state(const struct dc_state 
 	profile.power_level += !context->bw_ctx.bw.dcn.clk.p_state_change_support;
 
 	return profile;
+}
+
+/*
+ **********************************************************************************
+ * dc_get_det_buffer_size_from_state() - extracts detile buffer size from dc state
+ *
+ * Called when DM wants to log detile buffer size from dc_state
+ *
+ **********************************************************************************
+ */
+unsigned int dc_get_det_buffer_size_from_state(const struct dc_state *context)
+{
+	struct dc *dc = context->clk_mgr->ctx->dc;
+
+	if (dc->res_pool->funcs->get_det_buffer_size)
+		return dc->res_pool->funcs->get_det_buffer_size(context);
+	else
+		return 0;
 }

@@ -1154,6 +1154,13 @@ static int io_clone_buffers(struct io_ring_ctx *ctx, struct io_ring_ctx *src_ctx
 	int i, ret, nbufs;
 
 	/*
+	 * Accounting state is shared between the two rings; that only works if
+	 * both rings are accounted towards the same counters.
+	 */
+	if (ctx->user != src_ctx->user || ctx->mm_account != src_ctx->mm_account)
+		return -EINVAL;
+
+	/*
 	 * Drop our own lock here. We'll setup the data we need and reference
 	 * the source buffers, then re-grab, check, and assign at the end.
 	 */
@@ -1176,7 +1183,8 @@ static int io_clone_buffers(struct io_ring_ctx *ctx, struct io_ring_ctx *src_ctx
 	for (i = 0; i < nbufs; i++) {
 		struct io_mapped_ubuf *src = src_ctx->user_bufs[i];
 
-		refcount_inc(&src->refs);
+		if (src != &dummy_ubuf)
+			refcount_inc(&src->refs);
 		user_bufs[i] = src;
 	}
 

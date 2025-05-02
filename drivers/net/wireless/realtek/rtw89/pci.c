@@ -2492,7 +2492,7 @@ static int rtw89_pci_dphy_delay(struct rtw89_dev *rtwdev)
 				       PCIE_DPHY_DLY_25US, PCIE_PHY_GEN1);
 }
 
-static void rtw89_pci_power_wake(struct rtw89_dev *rtwdev, bool pwr_up)
+static void rtw89_pci_power_wake_ax(struct rtw89_dev *rtwdev, bool pwr_up)
 {
 	if (pwr_up)
 		rtw89_write32_set(rtwdev, R_AX_HCI_OPT_CTRL, BIT_WAKE_CTRL);
@@ -2799,6 +2799,8 @@ static int rtw89_pci_ops_deinit(struct rtw89_dev *rtwdev)
 {
 	const struct rtw89_pci_info *info = rtwdev->pci_info;
 
+	rtw89_pci_power_wake(rtwdev, false);
+
 	if (rtwdev->chip->chip_id == RTL8852A) {
 		/* ltr sw trigger */
 		rtw89_write32_set(rtwdev, R_AX_LTR_CTRL_0, B_AX_APP_LTR_IDLE);
@@ -2841,7 +2843,7 @@ static int rtw89_pci_ops_mac_pre_init_ax(struct rtw89_dev *rtwdev)
 		return ret;
 	}
 
-	rtw89_pci_power_wake(rtwdev, true);
+	rtw89_pci_power_wake_ax(rtwdev, true);
 	rtw89_pci_autoload_hang(rtwdev);
 	rtw89_pci_l12_vmain(rtwdev);
 	rtw89_pci_gen2_force_ib(rtwdev);
@@ -2882,6 +2884,13 @@ static int rtw89_pci_ops_mac_pre_init_ax(struct rtw89_dev *rtwdev)
 
 	/* start DMA activities */
 	rtw89_pci_ctrl_dma_all(rtwdev, true);
+
+	return 0;
+}
+
+static int rtw89_pci_ops_mac_pre_deinit_ax(struct rtw89_dev *rtwdev)
+{
+	rtw89_pci_power_wake_ax(rtwdev, false);
 
 	return 0;
 }
@@ -3026,23 +3035,53 @@ static void rtw89_pci_declaim_device(struct rtw89_dev *rtwdev,
 	pci_disable_device(pdev);
 }
 
-static void rtw89_pci_cfg_dac(struct rtw89_dev *rtwdev)
+static bool rtw89_pci_chip_is_manual_dac(struct rtw89_dev *rtwdev)
 {
-	struct rtw89_pci *rtwpci = (struct rtw89_pci *)rtwdev->priv;
 	const struct rtw89_chip_info *chip = rtwdev->chip;
-
-	if (!rtwpci->enable_dac)
-		return;
 
 	switch (chip->chip_id) {
 	case RTL8852A:
 	case RTL8852B:
 	case RTL8851B:
 	case RTL8852BT:
-		break;
+		return true;
 	default:
-		return;
+		return false;
 	}
+}
+
+static bool rtw89_pci_is_dac_compatible_bridge(struct rtw89_dev *rtwdev)
+{
+	struct rtw89_pci *rtwpci = (struct rtw89_pci *)rtwdev->priv;
+	struct pci_dev *bridge = pci_upstream_bridge(rtwpci->pdev);
+
+	if (!rtw89_pci_chip_is_manual_dac(rtwdev))
+		return true;
+
+	if (!bridge)
+		return false;
+
+	switch (bridge->vendor) {
+	case PCI_VENDOR_ID_INTEL:
+		return true;
+	case PCI_VENDOR_ID_ASMEDIA:
+		if (bridge->device == 0x2806)
+			return true;
+		break;
+	}
+
+	return false;
+}
+
+static void rtw89_pci_cfg_dac(struct rtw89_dev *rtwdev)
+{
+	struct rtw89_pci *rtwpci = (struct rtw89_pci *)rtwdev->priv;
+
+	if (!rtwpci->enable_dac)
+		return;
+
+	if (!rtw89_pci_chip_is_manual_dac(rtwdev))
+		return;
 
 	rtw89_pci_config_byte_set(rtwdev, RTW89_PCIE_L1_CTRL, RTW89_PCIE_BIT_EN_64BITS);
 }
@@ -3061,6 +3100,9 @@ static int rtw89_pci_setup_mapping(struct rtw89_dev *rtwdev,
 		goto err;
 	}
 
+	if (!rtw89_pci_is_dac_compatible_bridge(rtwdev))
+		goto no_dac;
+
 	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(36));
 	if (!ret) {
 		rtwpci->enable_dac = true;
@@ -3073,6 +3115,7 @@ static int rtw89_pci_setup_mapping(struct rtw89_dev *rtwdev,
 			goto err_release_regions;
 		}
 	}
+no_dac:
 
 	resource_len = pci_resource_len(pdev, bar_id);
 	rtwpci->mmap = pci_iomap(pdev, bar_id, resource_len);
@@ -4230,7 +4273,7 @@ const struct rtw89_pci_gen_def rtw89_pci_gen_ax = {
 					    B_AX_RDU_INT},
 
 	.mac_pre_init = rtw89_pci_ops_mac_pre_init_ax,
-	.mac_pre_deinit = NULL,
+	.mac_pre_deinit = rtw89_pci_ops_mac_pre_deinit_ax,
 	.mac_post_init = rtw89_pci_ops_mac_post_init_ax,
 
 	.clr_idx_all = rtw89_pci_clr_idx_all_ax,
@@ -4246,6 +4289,8 @@ const struct rtw89_pci_gen_def rtw89_pci_gen_ax = {
 	.aspm_set = rtw89_pci_aspm_set_ax,
 	.clkreq_set = rtw89_pci_clkreq_set_ax,
 	.l1ss_set = rtw89_pci_l1ss_set_ax,
+
+	.power_wake = rtw89_pci_power_wake_ax,
 };
 EXPORT_SYMBOL(rtw89_pci_gen_ax);
 

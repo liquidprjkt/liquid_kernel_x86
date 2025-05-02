@@ -96,7 +96,7 @@ out_rcu:
 
 /* Caller need to hold vsock->tx_lock on vq */
 static int virtio_transport_send_skb(struct sk_buff *skb, struct virtqueue *vq,
-				     struct virtio_vsock *vsock)
+				     struct virtio_vsock *vsock, gfp_t gfp)
 {
 	int ret, in_sg = 0, out_sg = 0;
 	struct scatterlist **sgs;
@@ -140,7 +140,7 @@ static int virtio_transport_send_skb(struct sk_buff *skb, struct virtqueue *vq,
 		}
 	}
 
-	ret = virtqueue_add_sgs(vq, sgs, out_sg, in_sg, skb, GFP_KERNEL);
+	ret = virtqueue_add_sgs(vq, sgs, out_sg, in_sg, skb, gfp);
 	/* Usually this means that there is no more space available in
 	 * the vq
 	 */
@@ -178,7 +178,7 @@ virtio_transport_send_pkt_work(struct work_struct *work)
 
 		reply = virtio_vsock_skb_reply(skb);
 
-		ret = virtio_transport_send_skb(skb, vq, vsock);
+		ret = virtio_transport_send_skb(skb, vq, vsock, GFP_KERNEL);
 		if (ret < 0) {
 			virtio_vsock_skb_queue_head(&vsock->send_pkt_queue, skb);
 			break;
@@ -221,7 +221,7 @@ static int virtio_transport_send_skb_fast_path(struct virtio_vsock *vsock, struc
 	if (unlikely(ret == 0))
 		return -EBUSY;
 
-	ret = virtio_transport_send_skb(skb, vq, vsock);
+	ret = virtio_transport_send_skb(skb, vq, vsock, GFP_ATOMIC);
 	if (ret == 0)
 		virtqueue_kick(vq);
 
@@ -670,6 +670,13 @@ static int virtio_vsock_vqs_init(struct virtio_vsock *vsock)
 	};
 	int ret;
 
+	mutex_lock(&vsock->rx_lock);
+	vsock->rx_buf_nr = 0;
+	vsock->rx_buf_max_nr = 0;
+	mutex_unlock(&vsock->rx_lock);
+
+	atomic_set(&vsock->queued_replies, 0);
+
 	ret = virtio_find_vqs(vdev, VSOCK_VQ_MAX, vsock->vqs, vqs_info, NULL);
 	if (ret < 0)
 		return ret;
@@ -779,9 +786,6 @@ static int virtio_vsock_probe(struct virtio_device *vdev)
 
 	vsock->vdev = vdev;
 
-	vsock->rx_buf_nr = 0;
-	vsock->rx_buf_max_nr = 0;
-	atomic_set(&vsock->queued_replies, 0);
 
 	mutex_init(&vsock->tx_lock);
 	mutex_init(&vsock->rx_lock);

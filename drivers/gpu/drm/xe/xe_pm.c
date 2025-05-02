@@ -123,7 +123,7 @@ int xe_pm_suspend(struct xe_device *xe)
 	for_each_gt(gt, xe, id)
 		xe_gt_suspend_prepare(gt);
 
-	xe_display_pm_suspend(xe, false);
+	xe_display_pm_suspend(xe);
 
 	/* FIXME: Super racey... */
 	err = xe_bo_evict_all(xe);
@@ -133,7 +133,7 @@ int xe_pm_suspend(struct xe_device *xe)
 	for_each_gt(gt, xe, id) {
 		err = xe_gt_suspend(gt);
 		if (err) {
-			xe_display_pm_resume(xe, false);
+			xe_display_pm_resume(xe);
 			goto err;
 		}
 	}
@@ -187,7 +187,7 @@ int xe_pm_resume(struct xe_device *xe)
 	for_each_gt(gt, xe, id)
 		xe_gt_resume(gt);
 
-	xe_display_pm_resume(xe, false);
+	xe_display_pm_resume(xe);
 
 	err = xe_bo_restore_user(xe);
 	if (err)
@@ -264,6 +264,15 @@ int xe_pm_init_early(struct xe_device *xe)
 	return 0;
 }
 
+static u32 vram_threshold_value(struct xe_device *xe)
+{
+	/* FIXME: D3Cold temporarily disabled by default on BMG */
+	if (xe->info.platform == XE_BATTLEMAGE)
+		return 0;
+
+	return DEFAULT_VRAM_THRESHOLD;
+}
+
 /**
  * xe_pm_init - Initialize Xe Power Management
  * @xe: xe device instance
@@ -274,6 +283,7 @@ int xe_pm_init_early(struct xe_device *xe)
  */
 int xe_pm_init(struct xe_device *xe)
 {
+	u32 vram_threshold;
 	int err;
 
 	/* For now suspend/resume is only allowed with GuC */
@@ -287,7 +297,8 @@ int xe_pm_init(struct xe_device *xe)
 		if (err)
 			return err;
 
-		err = xe_pm_set_vram_threshold(xe, DEFAULT_VRAM_THRESHOLD);
+		vram_threshold = vram_threshold_value(xe);
+		err = xe_pm_set_vram_threshold(xe, vram_threshold);
 		if (err)
 			return err;
 	}

@@ -367,6 +367,10 @@ static bool host1x_wants_iommu(struct host1x *host1x)
 	return true;
 }
 
+/*
+ * Returns ERR_PTR on failure, NULL if the translation is IDENTITY, otherwise a
+ * valid paging domain.
+ */
 static struct iommu_domain *host1x_iommu_attach(struct host1x *host)
 {
 	struct iommu_domain *domain = iommu_get_domain_for_dev(host->dev);
@@ -391,6 +395,8 @@ static struct iommu_domain *host1x_iommu_attach(struct host1x *host)
 	 * Similarly, if host1x is already attached to an IOMMU (via the DMA
 	 * API), don't try to attach again.
 	 */
+	if (domain && domain->type == IOMMU_DOMAIN_IDENTITY)
+		domain = NULL;
 	if (!host1x_wants_iommu(host) || domain)
 		return domain;
 
@@ -625,11 +631,7 @@ static int host1x_probe(struct platform_device *pdev)
 		goto free_contexts;
 	}
 
-	err = host1x_intr_init(host);
-	if (err) {
-		dev_err(&pdev->dev, "failed to initialize interrupts\n");
-		goto deinit_syncpt;
-	}
+	mutex_init(&host->intr_mutex);
 
 	pm_runtime_enable(&pdev->dev);
 
@@ -641,6 +643,12 @@ static int host1x_probe(struct platform_device *pdev)
 	err = pm_runtime_resume_and_get(&pdev->dev);
 	if (err)
 		goto pm_disable;
+
+	err = host1x_intr_init(host);
+	if (err) {
+		dev_err(&pdev->dev, "failed to initialize interrupts\n");
+		goto pm_put;
+	}
 
 	host1x_debug_init(host);
 
@@ -658,13 +666,11 @@ unregister:
 	host1x_unregister(host);
 deinit_debugfs:
 	host1x_debug_deinit(host);
-
+	host1x_intr_deinit(host);
+pm_put:
 	pm_runtime_put_sync_suspend(&pdev->dev);
 pm_disable:
 	pm_runtime_disable(&pdev->dev);
-
-	host1x_intr_deinit(host);
-deinit_syncpt:
 	host1x_syncpt_deinit(host);
 free_contexts:
 	host1x_memory_context_list_free(&host->context_list);

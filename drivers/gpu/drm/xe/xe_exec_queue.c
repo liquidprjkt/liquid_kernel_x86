@@ -8,6 +8,7 @@
 #include <linux/nospec.h>
 
 #include <drm/drm_device.h>
+#include <drm/drm_drv.h>
 #include <drm/drm_file.h>
 #include <uapi/drm/xe_drm.h>
 
@@ -260,8 +261,14 @@ void xe_exec_queue_fini(struct xe_exec_queue *q)
 {
 	int i;
 
+	/*
+	 * Before releasing our ref to lrc and xef, accumulate our run ticks
+	 */
+	xe_exec_queue_update_run_ticks(q);
+
 	for (i = 0; i < q->width; ++i)
 		xe_lrc_put(q->lrc[i]);
+
 	__xe_exec_queue_free(q);
 }
 
@@ -635,14 +642,14 @@ int xe_exec_queue_create_ioctl(struct drm_device *dev, void *data,
 		}
 	}
 
-	mutex_lock(&xef->exec_queue.lock);
+	q->xef = xe_file_get(xef);
+
+	/* user id alloc must always be last in ioctl to prevent UAF */
 	err = xa_alloc(&xef->exec_queue.xa, &id, q, xa_limit_32b, GFP_KERNEL);
-	mutex_unlock(&xef->exec_queue.lock);
 	if (err)
 		goto kill_exec_queue;
 
 	args->exec_queue_id = id;
-	q->xef = xe_file_get(xef);
 
 	return 0;
 
@@ -756,9 +763,11 @@ bool xe_exec_queue_is_idle(struct xe_exec_queue *q)
  */
 void xe_exec_queue_update_run_ticks(struct xe_exec_queue *q)
 {
+	struct xe_device *xe = gt_to_xe(q->gt);
 	struct xe_file *xef;
 	struct xe_lrc *lrc;
 	u32 old_ts, new_ts;
+	int idx;
 
 	/*
 	 * Jobs that are run during driver load may use an exec_queue, but are
@@ -766,6 +775,10 @@ void xe_exec_queue_update_run_ticks(struct xe_exec_queue *q)
 	 * for kernel specific work.
 	 */
 	if (!q->vm || !q->vm->xef)
+		return;
+
+	/* Synchronize with unbind while holding the xe file open */
+	if (!drm_dev_enter(&xe->drm, &idx))
 		return;
 
 	xef = q->vm->xef;
@@ -781,6 +794,8 @@ void xe_exec_queue_update_run_ticks(struct xe_exec_queue *q)
 	lrc = q->lrc[0];
 	new_ts = xe_lrc_update_timestamp(lrc, &old_ts);
 	xef->run_ticks[q->class] += (new_ts - old_ts) * q->width;
+
+	drm_dev_exit(idx);
 }
 
 /**

@@ -120,19 +120,31 @@ static int nvme_map_user_request(struct request *req, u64 ubuffer,
 	struct nvme_ns *ns = q->queuedata;
 	struct block_device *bdev = ns ? ns->disk->part0 : NULL;
 	bool supports_metadata = bdev && blk_get_integrity(bdev->bd_disk);
+	struct nvme_ctrl *ctrl = nvme_req(req)->ctrl;
 	bool has_metadata = meta_buffer && meta_len;
 	struct bio *bio = NULL;
 	int ret;
 
-	if (has_metadata && !supports_metadata)
-		return -EINVAL;
+	if (!nvme_ctrl_sgl_supported(ctrl))
+		dev_warn_once(ctrl->device, "using unchecked data buffer\n");
+	if (has_metadata) {
+		if (!supports_metadata) {
+			ret = -EINVAL;
+			goto out;
+		}
+		if (!nvme_ctrl_meta_sgl_supported(ctrl))
+			dev_warn_once(ctrl->device,
+				      "using unchecked metadata buffer\n");
+	}
 
 	if (ioucmd && (ioucmd->flags & IORING_URING_CMD_FIXED)) {
 		struct iov_iter iter;
 
 		/* fixedbufs is only for non-vectored io */
-		if (WARN_ON_ONCE(flags & NVME_IOCTL_VEC))
-			return -EINVAL;
+		if (flags & NVME_IOCTL_VEC) {
+			ret = -EINVAL;
+			goto out;
+		}
 		ret = io_uring_cmd_import_fixed(ubuffer, bufflen,
 				rq_data_dir(req), &iter, ioucmd);
 		if (ret < 0)
@@ -276,8 +288,7 @@ static bool nvme_validate_passthru_nsid(struct nvme_ctrl *ctrl,
 {
 	if (ns && nsid != ns->head->ns_id) {
 		dev_err(ctrl->device,
-			"%s: nsid (%u) in cmd does not match nsid (%u)"
-			"of namespace\n",
+			"%s: nsid (%u) in cmd does not match nsid (%u) of namespace\n",
 			current->comm, nsid, ns->head->ns_id);
 		return false;
 	}
@@ -421,10 +432,13 @@ static enum rq_end_io_ret nvme_uring_cmd_end_io(struct request *req,
 	struct io_uring_cmd *ioucmd = req->end_io_data;
 	struct nvme_uring_cmd_pdu *pdu = nvme_uring_cmd_pdu(ioucmd);
 
-	if (nvme_req(req)->flags & NVME_REQ_CANCELLED)
+	if (nvme_req(req)->flags & NVME_REQ_CANCELLED) {
 		pdu->status = -EINTR;
-	else
+	} else {
 		pdu->status = nvme_req(req)->status;
+		if (!pdu->status)
+			pdu->status = blk_status_to_errno(err);
+	}
 	pdu->result = le64_to_cpu(nvme_req(req)->result.u64);
 
 	/*

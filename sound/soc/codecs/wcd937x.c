@@ -715,12 +715,17 @@ static int wcd937x_codec_enable_aux_pa(struct snd_soc_dapm_widget *w,
 	struct snd_soc_component *component = snd_soc_dapm_to_component(w->dapm);
 	struct wcd937x_priv *wcd937x = snd_soc_component_get_drvdata(component);
 	int hph_mode = wcd937x->hph_mode;
+	u8 val;
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
+		val = WCD937X_DIGITAL_PDM_WD_CTL2_EN |
+		      WCD937X_DIGITAL_PDM_WD_CTL2_TIMEOUT_SEL |
+		      WCD937X_DIGITAL_PDM_WD_CTL2_HOLD_OFF;
 		snd_soc_component_update_bits(component,
 					      WCD937X_DIGITAL_PDM_WD_CTL2,
-					      BIT(0), BIT(0));
+					      WCD937X_DIGITAL_PDM_WD_CTL2_MASK,
+					      val);
 		break;
 	case SND_SOC_DAPM_POST_PMU:
 		usleep_range(1000, 1010);
@@ -741,7 +746,8 @@ static int wcd937x_codec_enable_aux_pa(struct snd_soc_dapm_widget *w,
 					hph_mode);
 		snd_soc_component_update_bits(component,
 					      WCD937X_DIGITAL_PDM_WD_CTL2,
-					      BIT(0), 0x00);
+					      WCD937X_DIGITAL_PDM_WD_CTL2_MASK,
+					      0x00);
 		break;
 	}
 
@@ -2049,6 +2055,8 @@ static const struct snd_kcontrol_new wcd937x_snd_controls[] = {
 		       wcd937x_get_swr_port, wcd937x_set_swr_port),
 	SOC_SINGLE_EXT("HPHR Switch", WCD937X_HPH_R, 0, 1, 0,
 		       wcd937x_get_swr_port, wcd937x_set_swr_port),
+	SOC_SINGLE_EXT("LO Switch", WCD937X_LO, 0, 1, 0,
+		       wcd937x_get_swr_port, wcd937x_set_swr_port),
 
 	SOC_SINGLE_EXT("ADC1 Switch", WCD937X_ADC1, 1, 1, 0,
 		       wcd937x_get_swr_port, wcd937x_set_swr_port),
@@ -2556,6 +2564,7 @@ static int wcd937x_soc_codec_probe(struct snd_soc_component *component)
 						ARRAY_SIZE(wcd9375_dapm_widgets));
 		if (ret < 0) {
 			dev_err(component->dev, "Failed to add snd_ctls\n");
+			wcd_clsh_ctrl_free(wcd937x->clsh_info);
 			return ret;
 		}
 
@@ -2563,6 +2572,7 @@ static int wcd937x_soc_codec_probe(struct snd_soc_component *component)
 					      ARRAY_SIZE(wcd9375_audio_map));
 		if (ret < 0) {
 			dev_err(component->dev, "Failed to add routes\n");
+			wcd_clsh_ctrl_free(wcd937x->clsh_info);
 			return ret;
 		}
 	}

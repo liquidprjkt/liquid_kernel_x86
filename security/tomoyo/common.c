@@ -998,13 +998,8 @@ static bool tomoyo_select_domain(struct tomoyo_io_buffer *head,
 			p = find_task_by_pid_ns(pid, &init_pid_ns);
 		else
 			p = find_task_by_vpid(pid);
-		if (p) {
+		if (p)
 			domain = tomoyo_task(p)->domain_info;
-#ifdef CONFIG_SECURITY_TOMOYO_LKM
-			if (!domain)
-				domain = &tomoyo_kernel_domain;
-#endif
-		}
 		rcu_read_unlock();
 	} else if (!strncmp(data, "domain=", 7)) {
 		if (tomoyo_domain_def(data + 7))
@@ -1715,13 +1710,8 @@ static void tomoyo_read_pid(struct tomoyo_io_buffer *head)
 		p = find_task_by_pid_ns(pid, &init_pid_ns);
 	else
 		p = find_task_by_vpid(pid);
-	if (p) {
+	if (p)
 		domain = tomoyo_task(p)->domain_info;
-#ifdef CONFIG_SECURITY_TOMOYO_LKM
-		if (!domain)
-			domain = &tomoyo_kernel_domain;
-#endif
-	}
 	rcu_read_unlock();
 	if (!domain)
 		return;
@@ -2675,7 +2665,7 @@ ssize_t tomoyo_write_control(struct tomoyo_io_buffer *head,
 
 		if (head->w.avail >= head->writebuf_size - 1) {
 			const int len = head->writebuf_size * 2;
-			char *cp = kzalloc(len, GFP_NOFS);
+			char *cp = kzalloc(len, GFP_NOFS | __GFP_NOWARN);
 
 			if (!cp) {
 				error = -ENOMEM;

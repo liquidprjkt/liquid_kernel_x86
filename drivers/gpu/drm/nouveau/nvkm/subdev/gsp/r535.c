@@ -78,7 +78,7 @@ r535_rpc_status_to_errno(uint32_t rpc_status)
 	switch (rpc_status) {
 	case 0x55: /* NV_ERR_NOT_READY */
 	case 0x66: /* NV_ERR_TIMEOUT_RETRY */
-		return -EAGAIN;
+		return -EBUSY;
 	case 0x51: /* NV_ERR_NO_MEMORY */
 		return -ENOMEM;
 	default:
@@ -121,6 +121,8 @@ r535_gsp_msgq_wait(struct nvkm_gsp *gsp, u32 repc, u32 *prepc, int *ptime)
 		return mqe->data;
 	}
 
+	size = ALIGN(repc + GSP_MSG_HDR_SIZE, GSP_PAGE_SIZE);
+
 	msg = kvmalloc(repc, GFP_KERNEL);
 	if (!msg)
 		return ERR_PTR(-ENOMEM);
@@ -129,18 +131,14 @@ r535_gsp_msgq_wait(struct nvkm_gsp *gsp, u32 repc, u32 *prepc, int *ptime)
 	len = min_t(u32, repc, len);
 	memcpy(msg, mqe->data, len);
 
-	rptr += DIV_ROUND_UP(len, GSP_PAGE_SIZE);
-	if (rptr == gsp->msgq.cnt)
-		rptr = 0;
-
 	repc -= len;
 
 	if (repc) {
 		mqe = (void *)((u8 *)gsp->shm.msgq.ptr + 0x1000 + 0 * 0x1000);
 		memcpy(msg + len, mqe, repc);
-
-		rptr += DIV_ROUND_UP(repc, GSP_PAGE_SIZE);
 	}
+
+	rptr = (rptr + DIV_ROUND_UP(size, GSP_PAGE_SIZE)) % gsp->msgq.cnt;
 
 	mb();
 	(*gsp->msgq.rptr) = rptr;
@@ -163,7 +161,7 @@ r535_gsp_cmdq_push(struct nvkm_gsp *gsp, void *argv)
 	u64 *end;
 	u64 csum = 0;
 	int free, time = 1000000;
-	u32 wptr, size;
+	u32 wptr, size, step;
 	u32 off = 0;
 
 	argc = ALIGN(GSP_MSG_HDR_SIZE + argc, GSP_PAGE_SIZE);
@@ -197,7 +195,9 @@ r535_gsp_cmdq_push(struct nvkm_gsp *gsp, void *argv)
 		}
 
 		cqe = (void *)((u8 *)gsp->shm.cmdq.ptr + 0x1000 + wptr * 0x1000);
-		size = min_t(u32, argc, (gsp->cmdq.cnt - wptr) * GSP_PAGE_SIZE);
+		step = min_t(u32, free, (gsp->cmdq.cnt - wptr));
+		size = min_t(u32, argc, step * GSP_PAGE_SIZE);
+
 		memcpy(cqe, (u8 *)cmd + off, size);
 
 		wptr += DIV_ROUND_UP(size, 0x1000);
@@ -601,7 +601,7 @@ r535_gsp_rpc_rm_alloc_push(struct nvkm_gsp_object *object, void *argv, u32 repc)
 
 	if (rpc->status) {
 		ret = ERR_PTR(r535_rpc_status_to_errno(rpc->status));
-		if (PTR_ERR(ret) != -EAGAIN)
+		if (PTR_ERR(ret) != -EAGAIN && PTR_ERR(ret) != -EBUSY)
 			nvkm_error(&gsp->subdev, "RM_ALLOC: 0x%x\n", rpc->status);
 	} else {
 		ret = repc ? rpc->params : NULL;
@@ -660,7 +660,7 @@ r535_gsp_rpc_rm_ctrl_push(struct nvkm_gsp_object *object, void **argv, u32 repc)
 
 	if (rpc->status) {
 		ret = r535_rpc_status_to_errno(rpc->status);
-		if (ret != -EAGAIN)
+		if (ret != -EAGAIN && ret != -EBUSY)
 			nvkm_error(&gsp->subdev, "cli:0x%08x obj:0x%08x ctrl cmd:0x%08x failed: 0x%08x\n",
 				   object->client->object.handle, object->handle, rpc->cmd, rpc->status);
 	}

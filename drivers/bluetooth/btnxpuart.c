@@ -10,7 +10,7 @@
 #include <linux/serdev.h>
 #include <linux/of.h>
 #include <linux/skbuff.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <linux/firmware.h>
 #include <linux/string.h>
 #include <linux/crc8.h>
@@ -1341,7 +1341,7 @@ static void btnxpuart_tx_work(struct work_struct *work)
 		skb_pull(skb, len);
 		if (skb->len > 0) {
 			skb_queue_head(&nxpdev->txq, skb);
-			break;
+			continue;
 		}
 
 		switch (hci_skb_pkt_type(skb)) {
