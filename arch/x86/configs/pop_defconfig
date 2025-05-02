@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/x86 6.25.0-zen Kernel Configuration
+# Linux/x86 6.25.0-liquid Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="Ubuntu clang version 14.0.0-1ubuntu1.1"
 CONFIG_GCC_VERSION=0
