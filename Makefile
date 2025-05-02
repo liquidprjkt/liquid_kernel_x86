@@ -1034,8 +1034,6 @@ KBUILD_CFLAGS	+= -fno-strict-overflow
 # Make sure -fstack-check isn't enabled (like gentoo apparently did)
 KBUILD_CFLAGS  += -fno-stack-check
 
-<<<<<<< HEAD
-=======
 # conserve stack if available
 ifdef CONFIG_CC_IS_GCC
 KBUILD_CFLAGS   += -fconserve-stack
@@ -1047,7 +1045,6 @@ KBUILD_CFLAGS += -fno-builtin-wcslen
 # Ensure compilers do not transform certain loops into calls to wcslen()
 KBUILD_CFLAGS += -fno-builtin-wcslen
 
->>>>>>> ef4999852d307d38cfdecd91ed6892cc03beb9b8
 # change __FILE__ to the relative path from the srctree
 KBUILD_CPPFLAGS += $(call cc-option,-fmacro-prefix-map=$(srctree)/=)
 
