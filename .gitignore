@@ -176,5 +176,10 @@ x509.genkey
 # Documentation toolchain
 sphinx_*/
 
+# Ignore build stuff
+clang/
+kbuilder.sh
+regen.sh
+
 # Rust analyzer configuration
 /rust-project.json
