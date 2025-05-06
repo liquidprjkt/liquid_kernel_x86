@@ -180,6 +180,7 @@ sphinx_*/
 clang/
 kbuilder.sh
 regen.sh
+logs.txt
 
 # Rust analyzer configuration
 /rust-project.json
